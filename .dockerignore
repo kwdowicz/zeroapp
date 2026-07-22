@@ -1,0 +1,8 @@
+.git
+.gitignore
+.idea
+.vscode
+*.exe
+*.test
+coverage.out
+README.md
