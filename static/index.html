@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Todo list</title>
+  <style>
+    :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; background: #f6f7fb; color: #20232a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 3rem 1rem; }
+    main { width: min(680px, 100%); margin: auto; }
+    h1 { margin: 0 0 1.5rem; font-size: 2rem; }
+    form, li { display: flex; gap: .75rem; padding: 1rem; background: white; border: 1px solid #dfe3ea; border-radius: .75rem; }
+    form { margin-bottom: 1rem; }
+    input { min-width: 0; flex: 1; }
+    input, select, button { padding: .65rem .8rem; border: 1px solid #bbc2cd; border-radius: .45rem; font: inherit; }
+    button { cursor: pointer; background: #3157d5; border-color: #3157d5; color: white; }
+    button.delete { background: white; border-color: #d84040; color: #b52424; }
+    ul { display: grid; gap: .7rem; margin: 0; padding: 0; list-style: none; }
+    li { align-items: center; }
+    .title { flex: 1; overflow-wrap: anywhere; }
+    .done .title { color: #737984; text-decoration: line-through; }
+    #empty, #error { text-align: center; color: #737984; }
+    #error { color: #b52424; }
+    @media (max-width: 520px) { form, li { flex-wrap: wrap; } form input, li .title { flex-basis: 100%; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Todo list</h1>
+    <form id="new-task">
+      <input id="title" name="title" required maxlength="200" autocomplete="off" placeholder="What needs doing?" aria-label="Task title">
+      <button type="submit">Add task</button>
+    </form>
+    <p id="error" role="alert" hidden></p>
+    <p id="empty" hidden>No tasks yet.</p>
+    <ul id="tasks"></ul>
+  </main>
+  <script>
+    const form = document.querySelector('#new-task');
+    const title = document.querySelector('#title');
+    const list = document.querySelector('#tasks');
+    const empty = document.querySelector('#empty');
+    const errorBox = document.querySelector('#error');
+
+    async function request(url, options) {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Request failed (${response.status})`);
+      }
+      return response.status === 204 ? null : response.json();
+    }
+
+    function showError(error) {
+      errorBox.textContent = error.message;
+      errorBox.hidden = false;
+    }
+
+    function render(tasks) {
+      list.replaceChildren(...tasks.map(task => {
+        const item = document.createElement('li');
+        item.className = task.status;
+
+        const text = document.createElement('span');
+        text.className = 'title';
+        text.textContent = task.title;
+
+        const status = document.createElement('select');
+        status.setAttribute('aria-label', `Status for ${task.title}`);
+        for (const value of ['new', 'doing', 'done']) {
+          status.add(new Option(value, value, false, task.status === value));
+        }
+        status.addEventListener('change', async () => {
+          try {
+            await request(`/api/tasks/${task.id}`, {
+              method: 'PUT', headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({title: task.title, status: status.value})
+            });
+            await load();
+          } catch (error) { showError(error); }
+        });
+
+        const remove = document.createElement('button');
+        remove.className = 'delete';
+        remove.textContent = 'Delete';
+        remove.addEventListener('click', async () => {
+          try {
+            await request(`/api/tasks/${task.id}`, {method: 'DELETE'});
+            await load();
+          } catch (error) { showError(error); }
+        });
+
+        item.append(text, status, remove);
+        return item;
+      }));
+      empty.hidden = tasks.length !== 0;
+    }
+
+    async function load() {
+      errorBox.hidden = true;
+      try { render(await request('/api/tasks')); }
+      catch (error) { showError(error); }
+    }
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        await request('/api/tasks', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({title: title.value})
+        });
+        form.reset();
+        title.focus();
+        await load();
+      } catch (error) { showError(error); }
+    });
+
+    load();
+  </script>
+</body>
+</html>
