@@ -8,18 +8,40 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 )
 
 //go:embed static/index.html
 var staticFiles embed.FS
 
 type App struct {
-	store *TaskStore
+	store  *TaskStore
+	health *Health
 }
 
 func NewApp(store *TaskStore) http.Handler {
-	app := &App{store: store}
+	return NewAppWithHealth(store, NewHealth())
+}
+
+type Health struct {
+	ready atomic.Bool
+}
+
+func NewHealth() *Health {
+	health := &Health{}
+	health.ready.Store(true)
+	return health
+}
+
+func (h *Health) SetReady(ready bool) {
+	h.ready.Store(ready)
+}
+
+func NewAppWithHealth(store *TaskStore, health *Health) http.Handler {
+	app := &App{store: store, health: health}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health/live", app.live)
+	mux.HandleFunc("GET /health/ready", app.ready)
 	mux.HandleFunc("GET /api/tasks", app.listTasks)
 	mux.HandleFunc("POST /api/tasks", app.createTask)
 	mux.HandleFunc("GET /api/tasks/{id}", app.getTask)
@@ -27,6 +49,18 @@ func NewApp(store *TaskStore) http.Handler {
 	mux.HandleFunc("DELETE /api/tasks/{id}", app.deleteTask)
 	mux.HandleFunc("GET /", app.index)
 	return mux
+}
+
+func (a *App) live(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) ready(w http.ResponseWriter, _ *http.Request) {
+	if !a.health.ready.Load() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *App) index(w http.ResponseWriter, r *http.Request) {

@@ -8,7 +8,7 @@ A small Go web application and REST API for tasks with a title and one of three 
 go run .
 ```
 
-Open <http://localhost:8080>. Set `ADDR` to use a different address, for example `$env:ADDR = ":3000"`.
+Open <http://localhost:8080>. Set `ADDR` to use a different address, for example `$env:ADDR = ":3000"`. `SHUTDOWN_TIMEOUT` controls how long the server waits for active requests after an interrupt or termination signal and defaults to `10s`.
 
 ## REST API
 
@@ -19,6 +19,8 @@ Open <http://localhost:8080>. Set `ADDR` to use a different address, for example
 | `GET` | `/api/tasks/{id}` | Get one task |
 | `PUT` | `/api/tasks/{id}` | Replace a task's title and status |
 | `DELETE` | `/api/tasks/{id}` | Delete a task |
+| `GET` | `/health/live` | Report that the HTTP process is alive |
+| `GET` | `/health/ready` | Report whether the process should receive traffic |
 
 Create a task:
 
@@ -54,6 +56,6 @@ Run it locally:
 docker run --rm -p 8080:8080 --name zeroapp zeroapp:latest
 ```
 
-The image exposes port `8080`, listens on all container interfaces, and is suitable for Docker or Kubernetes. A Kubernetes HTTP liveness/readiness probe can use `GET /api/tasks` on port `8080`.
+The image exposes port `8080`, listens on all container interfaces, and is suitable for Docker or Kubernetes. Kubernetes probes should use `GET /health/live` and `GET /health/ready` on port `8080`. On SIGTERM, the server marks itself unready and gracefully drains active requests before exiting.
 
 Task storage is in memory. Container restarts erase all tasks, and multiple replicas do not share data. Add persistent storage before using this application for durable or multi-replica workloads.

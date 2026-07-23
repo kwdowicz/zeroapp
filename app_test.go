@@ -148,6 +148,19 @@ func TestJSONResponsesHaveContentType(t *testing.T) {
 	}
 }
 
+func TestHealthEndpoints(t *testing.T) {
+	t.Parallel()
+	health := NewHealth()
+	handler := NewAppWithHealth(NewTaskStore(), health)
+
+	assertStatus(t, serve(handler, http.MethodGet, "/health/live", ""), http.StatusNoContent)
+	assertStatus(t, serve(handler, http.MethodGet, "/health/ready", ""), http.StatusNoContent)
+
+	health.SetReady(false)
+	assertStatus(t, serve(handler, http.MethodGet, "/health/ready", ""), http.StatusServiceUnavailable)
+	assertStatus(t, serve(handler, http.MethodGet, "/health/live", ""), http.StatusNoContent)
+}
+
 func serve(handler http.Handler, method, path, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
