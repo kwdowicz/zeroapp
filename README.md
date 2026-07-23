@@ -2,8 +2,6 @@
 
 A small Go web application and REST API for tasks with a title and one of three statuses: `new`, `doing`, or `done`. Data is kept in memory and resets when the server restarts.
 
-This repository is also a small, desktop-sized Kubernetes and Terraform learning lab. Start with [docs/learning-path.md](docs/learning-path.md). The lab uses Minikube's Docker driver to keep the local cluster lightweight and disposable.
-
 ## Run
 
 ```powershell
