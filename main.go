@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -42,15 +42,37 @@ func loadServerConfig() (serverConfig, error) {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() (exitCode int) {
+	logger, shutdownLogging, otlpEnabled, err := setupLogger(context.Background(), os.Stdout)
+	if err != nil {
+		slog.New(slog.NewJSONHandler(os.Stderr, nil)).Error("initialize logging", "error", err)
+		return 1
+	}
+	slog.SetDefault(logger)
+	defer func() {
+		shutdownContext, cancel := context.WithTimeout(context.Background(), defaultShutdownTimeout)
+		defer cancel()
+		if err := shutdownLogging(shutdownContext); err != nil {
+			logger.Error("flush OpenTelemetry logs", "error", err)
+			exitCode = 1
+		}
+	}()
+
 	config, err := loadServerConfig()
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("load server configuration", "error", err)
+		return 1
 	}
 	health := NewHealth()
+	handler := withRequestLogging(NewAppWithHealth(NewTaskStore(), health), logger)
 
 	server := &http.Server{
 		Addr:              config.address,
-		Handler:           NewAppWithHealth(NewTaskStore(), health),
+		Handler:           handler,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -64,21 +86,23 @@ func main() {
 		defer close(shutdownComplete)
 		<-shutdownSignal.Done()
 		health.SetReady(false)
-		log.Printf("shutdown signal received; allowing up to %s for active requests", config.shutdownTimeout)
+		logger.Info("shutdown signal received", "shutdown_timeout", config.shutdownTimeout)
 
 		shutdownContext, cancel := context.WithTimeout(context.Background(), config.shutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(shutdownContext); err != nil {
-			log.Printf("graceful shutdown: %v", err)
+			logger.Error("graceful shutdown failed", "error", err)
 		}
 	}()
 
-	log.Printf("todo app listening on http://localhost%s (shutdown timeout %s)", config.address, config.shutdownTimeout)
+	logger.Info("todo app listening", "address", config.address, "shutdown_timeout", config.shutdownTimeout, "otel_logs", otlpEnabled)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+		logger.Error("HTTP server failed", "error", err)
+		return 1
 	}
 	if shutdownSignal.Err() != nil {
 		<-shutdownComplete
 	}
-	log.Printf("todo app stopped")
+	logger.Info("todo app stopped")
+	return 0
 }
