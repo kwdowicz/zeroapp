@@ -10,6 +10,20 @@ go run .
 
 Open <http://localhost:8080>. Set `ADDR` to use a different address, for example `$env:ADDR = ":3000"`. `SHUTDOWN_TIMEOUT` controls how long the server waits for active requests after an interrupt or termination signal and defaults to `10s`.
 
+## Logging
+
+The app writes structured JSON logs to stdout. Each completed HTTP request logs its method, route, path, status, response size, and duration; task titles and request bodies are not logged.
+
+Set an OTLP/HTTP endpoint to export the same records to an OpenTelemetry Collector in batches:
+
+```powershell
+$env:OTEL_SERVICE_NAME = "zeroapp"
+$env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318"
+go run .
+```
+
+Use `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` when logs have a signal-specific URL such as `http://localhost:4318/v1/logs`. The standard `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_LOGS_HEADERS`, timeout, compression, TLS, and certificate environment variables are handled by the OpenTelemetry exporter. Without either endpoint variable, the app remains stdout-only and does not try to contact a collector. Pending OTLP logs are flushed during shutdown.
+
 ## REST API
 
 | Method | Path | Purpose |
